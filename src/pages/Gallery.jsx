@@ -36,6 +36,10 @@ export default function Gallery() {
     </>
   );
 
+  const handleDelete = (deletedId) => {
+    setImages(prevImages => prevImages.filter(img => img.id !== deletedId));
+  };
+
   return (
     <>
       <Navbar />
@@ -44,7 +48,16 @@ export default function Gallery() {
           <div className="rounded sm:columns-2 md:columns-3 xl:columns-4 gap-2 w-11/12 box-border">
             {images.length > 0 ? (
               images.map((item) => (
-                <Image url={item.outputImage} key={item.id} />
+                <Image 
+                  key={item.id}
+                  url={item.outputImage} 
+                  metadata={{
+                    documentId: item.id,
+                    ...item,
+                    timestamp: item.timestamp // Firestore Timestamp object
+                  }}
+                  onDelete={handleDelete}
+                />
               ))
             ) : (
               <div className="text-white">No images found</div>
