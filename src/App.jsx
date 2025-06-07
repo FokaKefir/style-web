@@ -10,7 +10,7 @@ function App() {
     <Router>
       <div className="min-h-screen flex items-center justify-center bg-gray-100">
         <Routes>
-          <Route path="/" element={<Navigate to="/login" />} />
+          <Route path="/" element={<Navigate to="/gallery" />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/gallery" element={<Gallery />} />
