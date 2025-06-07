@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { db, auth } from "../firebase";
+import Image from "./Image";
 import { doc, getDoc, collection, query, where, getDocs, orderBy, onSnapshot, deleteDoc, addDoc } from "firebase/firestore";
 import { IoTrash } from "react-icons/io5";
 import { toast } from "sonner";
@@ -339,13 +340,18 @@ const UserProfile = ({ userData, isButton, onClick }) => {
               ) : userImages.length > 0 ? (
                 <div className="space-y-6 max-w-3xl mx-auto">
                   {userImages.map((image) => (
-                    <div key={image.id} className="group">
-                      <img
-                        src={image.outputImage}
-                        alt="Generated"
-                        className="w-full rounded-xl shadow-md transition-transform group-hover:scale-[1.02] object-contain bg-gray-50"
-                      />
-                    </div>
+                    <Image
+                      key={image.id}
+                      url={image.outputImage}
+                      metadata={{
+                        ...image,
+                        documentId: image.id
+                      }}
+                      onUserClick={() => {}}
+                      onDelete={(deletedId) => {
+                        setUserImages(prev => prev.filter(img => img.id !== deletedId));
+                      }}
+                    />
                   ))}
                 </div>
               ) : (
