@@ -10,6 +10,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from "./ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "./ui/alert-dialog";
 
 const Images = ({ url, metadata, onDelete, onUserClick }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -31,24 +42,22 @@ const Images = ({ url, metadata, onDelete, onUserClick }) => {
   }, [metadata?.style, currentUser]);
 
   const handleDelete = async () => {
-    if (window.confirm("Are you sure you want to delete this generation?")) {
-      try {
-        const promise = deleteDoc(doc(db, "gens", metadata.documentId));
-        
-        toast.promise(promise, {
-          loading: 'Deleting image...',
-          success: () => {
-            onDelete && onDelete(metadata.documentId);
-            setIsOpen(false);
-            return 'Image deleted successfully';
-          },
-          error: 'Failed to delete image',
-        });
-      } catch (error) {
-        toast.error('Failed to delete image', {
-          description: error.message
-        });
-      }
+    try {
+      const promise = deleteDoc(doc(db, "gens", metadata.documentId));
+      
+      toast.promise(promise, {
+        loading: 'Deleting image...',
+        success: () => {
+          onDelete && onDelete(metadata.documentId);
+          setIsOpen(false);
+          return 'Image deleted successfully';
+        },
+        error: 'Failed to delete image',
+      });
+    } catch (error) {
+      toast.error('Failed to delete image', {
+        description: error.message
+      });
     }
   };
 
@@ -110,34 +119,42 @@ const Images = ({ url, metadata, onDelete, onUserClick }) => {
           className="w-full mb-2 rounded-xl hover:scale-105 shadow-2xl hover:shadow-slate-900 transition cursor-pointer"
         />
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[825px]">
+      <DialogContent className="sm:max-w-[1000px] w-[90vw] data-[state=open]:animate-content-show data-[state=closed]:animate-content-hide">
         <DialogHeader>
           <DialogTitle className="text-xl">Generation</DialogTitle>
         </DialogHeader>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="space-y-6">
-            <div>
-              <img
-                src={metadata.outputImage}
-                alt="Generated"
-                className="h-[500px] w-full rounded-lg object-cover shadow-md"
-              />
-            </div>
-            
-            <div className="grid grid-cols-2 gap-4">
-              <div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <div className="space-y-8">
+            <div className="relative aspect-square w-full rounded-lg">
+              <div className="absolute inset-0 flex justify-center items-center">
                 <img
-                  src={metadata.contentImage}
-                  alt="Content"
-                  className="h-[240px] w-full rounded-lg object-cover shadow-md"
+                  src={metadata.outputImage}
+                  alt="Generated"
+                  className="max-w-full max-h-full w-auto h-auto rounded-xl object-contain shadow-md"
                 />
               </div>
-              <div>
-                <img
-                  src={metadata.style.image}
-                  alt="Style"
-                  className="h-[240px] w-full rounded-lg object-cover shadow-md"
-                />
+            </div>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 w-full">
+              <div className="flex flex-col items-center w-full">
+                <h4 className="font-medium mb-2 text-sm text-gray-600">Content Image</h4>
+                <div className="flex justify-center items-center w-full aspect-square bg-gray-50">
+                  <img
+                    src={metadata.contentImage}
+                    alt="Content"
+                    className="w-full h-full rounded-xl object-contain shadow-md"
+                  />
+                </div>
+              </div>
+              <div className="flex flex-col items-center w-full">
+                <h4 className="font-medium mb-2 text-sm text-gray-600">Style Image</h4>
+                <div className="flex justify-center items-center w-full aspect-square rounded-lg overflow-hidden">
+                  <img
+                    src={metadata.style.image}
+                    alt="Style"
+                    className="w-full h-full rounded-xl object-cover shadow-md"
+                  />
+                </div>
               </div>
             </div>
 
@@ -150,13 +167,28 @@ const Images = ({ url, metadata, onDelete, onUserClick }) => {
                 Download
               </button>
               {metadata.userId === currentUser?.uid && (
-                <button
-                  onClick={handleDelete}
-                  className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition"
-                >
-                  <IoTrash />
-                  Delete
-                </button>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <button
+                      className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition"
+                    >
+                      <IoTrash />
+                      Delete
+                    </button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Delete Generation</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Are you sure you want to delete this generation? This action cannot be undone.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction onClick={handleDelete}>Delete</AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               )}
             </div>
           </div>
@@ -185,27 +217,29 @@ const Images = ({ url, metadata, onDelete, onUserClick }) => {
                 <p>Duration: {metadata.iterations} iterations</p>
                 <p>Init Method: {metadata.initMethod}</p>
               </div>
-            </div>              <div>
-                <h4 className="font-medium mb-2">Additional Information</h4>
-                <div className="bg-gray-50 p-4 rounded-lg space-y-2">
-                  <p>Created by: 
-                    <span 
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setIsOpen(false);
-                        if (onUserClick) {
-                          setTimeout(() => onUserClick(), 100); // Small delay to ensure dialog closes first
-                        }
-                      }}
-                      className="text-blue-600 hover:underline cursor-pointer ml-1"
-                    >
-                      {metadata.username}
-                    </span>
-                  </p>
-                  <p>Created at: {metadata.timestamp?.toDate().toLocaleString()}</p>
-                </div>
+            </div>
+
+            <div>
+              <h4 className="font-medium mb-2">Additional Information</h4>
+              <div className="bg-gray-50 p-4 rounded-lg space-y-2">
+                <p>Created by: 
+                  <span 
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setIsOpen(false);
+                      if (onUserClick) {
+                        setTimeout(() => onUserClick(), 100);
+                      }
+                    }}
+                    className="text-blue-600 hover:underline cursor-pointer ml-1"
+                  >
+                    {metadata.username}
+                  </span>
+                </p>
+                <p>Created at: {metadata.timestamp?.toDate().toLocaleString()}</p>
               </div>
+            </div>
           </div>
         </div>
       </DialogContent>

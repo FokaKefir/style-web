@@ -10,6 +10,10 @@ module.exports = {
           '0%': { opacity: 0 },
           '100%': { opacity: 1 }
         },
+        'overlay-hide': {
+          '0%': { opacity: 1 },
+          '100%': { opacity: 0 }
+        },
         'content-show': {
           '0%': { 
             opacity: 0,
@@ -24,6 +28,16 @@ module.exports = {
             transform: 'translate(-50%, -50%) scale(1)'
           }
         },
+        'content-hide': {
+          '0%': { 
+            opacity: 1,
+            transform: 'translate(-50%, -50%) scale(1)'
+          },
+          '100%': { 
+            opacity: 0,
+            transform: 'translate(-50%, 100vh) scale(0.96)'
+          }
+        },
         'slide-in': {
           '0%': { transform: 'translateX(100%)' },
           '100%': { transform: 'translateX(0)' },
@@ -35,7 +49,9 @@ module.exports = {
       },
       animation: {
         'overlay-show': 'overlay-show 200ms ease-out',
+        'overlay-hide': 'overlay-hide 200ms ease-in',
         'content-show': 'content-show 400ms cubic-bezier(0.34, 1.56, 0.64, 1)',
+        'content-hide': 'content-hide 300ms ease-in',
         'slide-in': 'slide-in 0.3s ease-out',
         'slide-out': 'slide-out 0.3s ease-in'
       },
