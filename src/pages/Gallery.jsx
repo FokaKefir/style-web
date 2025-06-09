@@ -1,21 +1,77 @@
-import { useEffect, useState } from "react";
-import { collection, query, orderBy, onSnapshot } from "firebase/firestore";
-import { auth, db } from "../firebase";
-import Image from "../components/Image";
+import { useState, useEffect } from "react";
+import { ImageDialog } from "../components/Image";
 import Navbar from "../components/Navbar";
-import { useNavigate } from "react-router-dom";
+import { MasonryPhotoAlbum } from "react-photo-album";
+import "react-photo-album/masonry.css";
 import { cn } from "../lib/utils";
 import UserProfile from "../components/UserProfile";
 import { X } from "lucide-react";
+import { collection, query, getDocs, orderBy } from "firebase/firestore";
+import { db, auth } from "../firebase";
 
 export default function Gallery() {
   const [images, setImages] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [selectedUser, setSelectedUser] = useState(null);
   const [isClosing, setIsClosing] = useState(false);
-  const navigate = useNavigate();
+  const [loading, setLoading] = useState(true);
+  const [isOpen, setIsOpen] = useState(false);
+  const [currentImage, setCurrentImage] = useState(null);
 
-  const handleCloseProfile = () => {
+  useEffect(() => {
+    const loadImageDimensions = (url) => {
+      return new Promise((resolve) => {
+        const img = document.createElement('img');
+        img.onload = () => {
+          resolve({
+            width: img.naturalWidth,
+            height: img.naturalHeight,
+          });
+        };
+        img.onerror = () => {
+          // Fallback dimensions if image fails to load
+          resolve({
+            width: 1200,
+            height: 800,
+          });
+        };
+        img.src = url;
+      });
+    };
+
+    const fetchImages = async () => {
+      setLoading(true);
+      try {
+        const q = query(collection(db, "gens"), orderBy("timestamp", "desc"));
+        const querySnapshot = await getDocs(q);
+        const fetchedImages = querySnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+
+        // Load dimensions for all images
+        const imagesWithDimensions = await Promise.all(
+          fetchedImages.map(async (image) => {
+            const dimensions = await loadImageDimensions(image.outputImage);
+            return {
+              ...image,
+              width: dimensions.width,
+              height: dimensions.height,
+            };
+          })
+        );
+
+        setImages(imagesWithDimensions);
+      } catch (error) {
+        console.error("Error fetching images:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchImages();
+  }, []);
+
+  const handleClose = () => {
     setIsClosing(true);
     setTimeout(() => {
       setSelectedUser(null);
@@ -23,43 +79,13 @@ export default function Gallery() {
     }, 300); // Match animation duration
   };
 
-  useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged((user) => {
-      if (!user) {
-        navigate("/");
-        return;
-      }
-      const q = query(
-        collection(db, "gens"),
-        orderBy("timestamp", "desc")
-      );
-      const unsub = onSnapshot(q, (snapshot) => {
-        setImages(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-        setLoading(false);
-      });
-      return unsub;
-    });
-    return () => unsubscribe && unsubscribe();
-  }, [navigate]);
-
   const handleUserSelect = (userData) => {
     setSelectedUser(userData);
   };
 
-  if (loading) return (
-    <>
-      <Navbar onProfileClick={() => handleUserSelect(auth.currentUser)} />
-      <div className="text-center mt-20">Loading...</div>
-    </>
-  );
-
-  const handleDelete = (deletedId) => {
-    setImages(prevImages => prevImages.filter(img => img.id !== deletedId));
-  };
-
   return (
     <>
-      <Navbar onProfileClick={() => handleUserSelect(auth.currentUser)} />
+      <Navbar onProfileClick={() => handleUserSelect({ uid: auth.currentUser?.uid, username: auth.currentUser?.email })} />
       <div className="pt-16">
         <div className="w-full min-h-screen bg-slate-900 flex">
           <div className={cn(
@@ -67,29 +93,30 @@ export default function Gallery() {
             selectedUser ? "w-2/3" : "w-full"
           )}>
             <div className="mx-auto px-8">
-              <div className="columns-1 sm:columns-2 xl:columns-3 gap-4">
-                {images.length > 0 ? (
-                  images.map((item) => (
-                    <Image
-                      key={item.id}
-                      url={item.outputImage}
-                      metadata={{
-                        ...item,
-                        documentId: item.id
-                      }}
-                      onDelete={handleDelete}
-                      onUserClick={() => {
-                        handleUserSelect({
-                          uid: item.userId,
-                          username: item.username
-                        });
-                      }}
-                    />
-                  ))
-                ) : (
-                  <div className="text-white text-center">No images found</div>
-                )}
-              </div>
+              {loading ? (
+                <div className="text-white text-center">Loading images...</div>
+              ) : images.length > 0 ? (
+                <MasonryPhotoAlbum
+                  layout="masonry"
+                  spacing={8}
+                  columns={4}
+                  photos={images.map(item => ({
+                    src: item.outputImage,
+                    width: item.width,
+                    height: item.height,
+                    alt: `Style: ${item.style?.name || 'Unknown'}`,
+                    originalItem: item
+                  }))}
+                  onClick={({ photo }) => {
+                    const item = photo.originalItem;
+                    setCurrentImage(item);
+                    setIsOpen(true);
+                  }}
+                  breakpoints={[220, 360, 480, 600, 900, 1200]}
+                />
+              ) : (
+                <div className="text-white text-center">No images found</div>
+              )}
             </div>
           </div>
           
@@ -99,9 +126,9 @@ export default function Gallery() {
               isClosing ? "animate-slide-out" : "animate-slide-in"
             )}>
               <button
-                onClick={handleCloseProfile}
+                onClick={handleClose}
                 className="absolute top-4 right-4 p-2 rounded-full hover:bg-slate-100 transition-colors"
-                aria-label="Close profile"
+                aria-label="Close panel"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -110,6 +137,20 @@ export default function Gallery() {
           )}
         </div>
       </div>
+
+      <ImageDialog 
+        isOpen={isOpen} 
+        setIsOpen={setIsOpen} 
+        image={currentImage}
+        onDelete={(deletedId) => {
+          setImages(prev => prev.filter(img => img.id !== deletedId));
+          setIsOpen(false);
+        }}
+        onUserClick={(userData) => {
+          setIsOpen(false);
+          handleUserSelect(userData);
+        }}
+      />
     </>
   );
 }
