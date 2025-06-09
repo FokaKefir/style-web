@@ -2,6 +2,7 @@ import { signOut } from "firebase/auth";
 import { auth } from "../firebase";
 import { useNavigate } from "react-router-dom";
 import UserProfile from "./UserProfile";
+import { GenerateDrawer } from "./GenerateDrawer";
 
 export default function Navbar({ onProfileClick }) {
   const navigate = useNavigate();
@@ -26,6 +27,7 @@ export default function Navbar({ onProfileClick }) {
             isButton={true}
             onClick={onProfileClick}
           />
+          <GenerateDrawer />
           <button
             onClick={handleLogout}
             className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 transition-colors"
