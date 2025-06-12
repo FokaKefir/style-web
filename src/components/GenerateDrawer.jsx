@@ -7,7 +7,8 @@ import {
   addDoc,
   serverTimestamp,
   doc,
-  getDoc
+  getDoc,
+  getDocs
 } from "firebase/firestore";
 import { Button } from "./ui/button"
 import { Slider } from "./ui/slider"
@@ -51,15 +52,98 @@ export function GenerateDrawer() {
   }, []);
   
   useEffect(() => {
-    const stylesRef = collection(db, "styles");
-    const unsub = onSnapshot(stylesRef, snap => {
-      const arr = snap.docs.map(d => ({ documentId: d.id, ...d.data() }));
-      setStyles(arr);
-      if (arr.length && selectedStyleIdx >= arr.length) {
+    let unsubscribeUserStyles = null;
+
+    const loadAndWatchStyles = async () => {
+      // 1) Load basic styles
+      const basicSnap = await getDocs(collection(db, "styles"));
+      const basicStyles = basicSnap.docs.map(doc => ({
+        documentId: doc.id,
+        ...doc.data(),
+        given: true,
+        timestamp: doc.data().timestamp || new Date(0),
+      }));
+
+      // default combined list is just basic
+      let combined = [...basicStyles];
+
+      // 2) If user signed in, load their styles too
+      const user = auth.currentUser;
+      if (user) {
+        const userStylesRef = collection(db, "users", user.uid, "styles");
+        const userSnap = await getDocs(userStylesRef);
+
+        const userStyles = userSnap.docs.map(doc => ({
+          documentId: doc.id,
+          ...doc.data(),
+          given: false,
+          timestamp: doc.data().timestamp || new Date(),
+        }));
+
+        // sort user styles newest first
+        userStyles.sort((a, b) => {
+          const ta = a.timestamp?.toMillis?.() ?? a.timestamp.getTime();
+          const tb = b.timestamp?.toMillis?.() ?? b.timestamp.getTime();
+          return tb - ta;
+        });
+
+        combined = [...userStyles, ...basicStyles];
+
+        // 3) real-time listener to keep userStyles up to date
+        unsubscribeUserStyles = onSnapshot(userStylesRef, snapshot => {
+          setStyles(prev => {
+            // split off basic from prior state
+            const basicOnly = prev.filter(s => s.given);
+            let usersOnly = prev.filter(s => !s.given);
+
+            snapshot.docChanges().forEach(change => {
+              const data = change.doc.data();
+              const updated = {
+                documentId: change.doc.id,
+                ...data,
+                given: false,
+                timestamp: data.timestamp || new Date(),
+              };
+
+              if (change.type === "added") {
+                if (!usersOnly.some(s => s.documentId === updated.documentId)) {
+                  usersOnly.push(updated);
+                }
+              } else if (change.type === "modified") {
+                usersOnly = usersOnly.map(s =>
+                  s.documentId === updated.documentId ? updated : s
+                );
+              } else if (change.type === "removed") {
+                usersOnly = usersOnly.filter(s => s.documentId !== updated.documentId);
+              }
+            });
+
+            // resort user styles
+            usersOnly.sort((a, b) => {
+              const ta = a.timestamp?.toMillis?.() ?? a.timestamp.getTime();
+              const tb = b.timestamp?.toMillis?.() ?? b.timestamp.getTime();
+              return tb - ta;
+            });
+
+            return [...usersOnly, ...basicOnly];
+          });
+        });
+      }
+
+      // 4) store initial combined list
+      setStyles(combined);
+
+      // 5) reset selected index if it falls off the list
+      if (combined.length && selectedStyleIdx >= combined.length) {
         setSelectedStyleIdx(0);
       }
-    });
-    return () => unsub();
+    };
+
+    loadAndWatchStyles().catch(console.error);
+
+    return () => {
+      if (unsubscribeUserStyles) unsubscribeUserStyles();
+    };
   }, [selectedStyleIdx]);
 
   // helper to reset everything
