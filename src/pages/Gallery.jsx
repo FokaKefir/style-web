@@ -6,7 +6,7 @@ import "react-photo-album/masonry.css";
 import { cn } from "../lib/utils";
 import UserProfile from "../components/UserProfile";
 import { X } from "lucide-react";
-import { collection, query, getDocs, orderBy } from "firebase/firestore";
+import { collection, query, onSnapshot, orderBy } from "firebase/firestore";
 import { db, auth } from "../firebase";
 
 export default function Gallery() {
@@ -18,57 +18,53 @@ export default function Gallery() {
   const [currentImage, setCurrentImage] = useState(null);
 
   useEffect(() => {
-    const loadImageDimensions = (url) => {
-      return new Promise((resolve) => {
-        const img = document.createElement('img');
-        img.onload = () => {
-          resolve({
-            width: img.naturalWidth,
-            height: img.naturalHeight,
-          });
-        };
-        img.onerror = () => {
-          // Fallback dimensions if image fails to load
-          resolve({
-            width: 1200,
-            height: 800,
-          });
-        };
+    // show the loader
+    setLoading(true);
+
+    // build your Firestore query
+    const imagesQuery = query(
+      collection(db, "gens"),
+      orderBy("timestamp", "desc")
+    );
+
+    // helper to load one image’s dims
+    const loadImageDimensions = (url) =>
+      new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () =>
+          resolve({ width: img.naturalWidth, height: img.naturalHeight });
+        img.onerror = () =>
+          resolve({ width: 1200, height: 800 });
         img.src = url;
       });
-    };
 
-    const fetchImages = async () => {
-      setLoading(true);
-      try {
-        const q = query(collection(db, "gens"), orderBy("timestamp", "desc"));
-        const querySnapshot = await getDocs(q);
-        const fetchedImages = querySnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
-
-        // Load dimensions for all images
-        const imagesWithDimensions = await Promise.all(
-          fetchedImages.map(async (image) => {
-            const dimensions = await loadImageDimensions(image.outputImage);
-            return {
-              ...image,
-              width: dimensions.width,
-              height: dimensions.height,
-            };
-          })
-        );
-
-        setImages(imagesWithDimensions);
-      } catch (error) {
-        console.error("Error fetching images:", error);
-      } finally {
+    // subscribe
+    const unsubscribe = onSnapshot(
+      imagesQuery,
+      (snapshot) => {
+        // wrap in async IIFE so we can await inside
+        (async () => {
+          const imgs = await Promise.all(
+            snapshot.docs.map(async (doc) => {
+              const data = doc.data();
+              const { width, height } = await loadImageDimensions(
+                data.outputImage
+              );
+              return { id: doc.id, ...data, width, height };
+            })
+          );
+          setImages(imgs);
+          setLoading(false);
+        })();
+      },
+      (error) => {
+        console.error("Gallery listener error:", error);
         setLoading(false);
       }
-    };
+    );
 
-    fetchImages();
+    // cleanup on unmount
+    return () => unsubscribe();
   }, []);
 
   const handleClose = () => {

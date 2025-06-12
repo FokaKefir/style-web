@@ -68,31 +68,34 @@ const UserProfile = ({ userData, isButton, onClick }) => {
   }, [userData?.uid]);
 
   useEffect(() => {
-    const fetchUserImages = async () => {
-      if (!userData?.uid) return;
+    if (!userData?.uid) return;
 
-      setLoadingImages(true);
-      try {
-        const q = query(
-          collection(db, "gens"),
-          where("userId", "==", userData.uid),
-          orderBy("timestamp", "desc")
-        );
-        const querySnapshot = await getDocs(q);
-        const images = querySnapshot.docs.map(doc => ({
+    setLoadingImages(true);
+
+    const imagesQuery = query(
+      collection(db, "gens"),
+      where("userId", "==", userData.uid),
+      orderBy("timestamp", "desc")
+    );
+
+    const unsubscribe = onSnapshot(
+      imagesQuery,
+      snapshot => {
+        const imgs = snapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data()
         }));
-        setUserImages(images);
-      } catch (error) {
-        console.error("Error fetching user images:", error);
+        setUserImages(imgs);
+        setLoadingImages(false);
+      },
+      err => {
+        console.error("Error listening to user images:", err);
         setError("Failed to load user images");
-      } finally {
         setLoadingImages(false);
       }
-    };
+    );
 
-    fetchUserImages();
+    return () => unsubscribe();
   }, [userData?.uid]);
 
   useEffect(() => {
