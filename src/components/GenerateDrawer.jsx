@@ -10,6 +10,7 @@ import {
   getDoc,
   getDocs
 } from "firebase/firestore";
+import { onAuthStateChanged } from "firebase/auth";
 import { Button } from "./ui/button"
 import { Slider } from "./ui/slider"
 import {
@@ -39,23 +40,34 @@ export function GenerateDrawer() {
   const [username, setUsername] = useState("");
 
 
+  
+
   useEffect(() => {
     const fetchUsername = async () => {
       const user = auth.currentUser;
       if (!user) return;
       const userRef = doc(db, "users", user.uid);
       const snap = await getDoc(userRef);
-      setUsername(snap.data()?.name || "");
+      setUsername(snap.data()?.name);
     };
+    const unsubscribe = onAuthStateChanged(auth, user => {
+      if (user) {
+        // only fetch once we actually have a user
+        fetchUsername(user);
+      } else {
+        setUsername("");
+      }
+    });
 
-    fetchUsername();
+    return unsubscribe;
   }, []);
+
+
   
   useEffect(() => {
     let unsubscribeUserStyles = null;
 
     const loadAndWatchStyles = async () => {
-      // 1) Load basic styles
       const basicSnap = await getDocs(collection(db, "styles"));
       const basicStyles = basicSnap.docs.map(doc => ({
         documentId: doc.id,
@@ -64,10 +76,8 @@ export function GenerateDrawer() {
         timestamp: doc.data().timestamp || new Date(0),
       }));
 
-      // default combined list is just basic
       let combined = [...basicStyles];
 
-      // 2) If user signed in, load their styles too
       const user = auth.currentUser;
       if (user) {
         const userStylesRef = collection(db, "users", user.uid, "styles");
@@ -80,7 +90,6 @@ export function GenerateDrawer() {
           timestamp: doc.data().timestamp || new Date(),
         }));
 
-        // sort user styles newest first
         userStyles.sort((a, b) => {
           const ta = a.timestamp?.toMillis?.() ?? a.timestamp.getTime();
           const tb = b.timestamp?.toMillis?.() ?? b.timestamp.getTime();
@@ -89,7 +98,6 @@ export function GenerateDrawer() {
 
         combined = [...userStyles, ...basicStyles];
 
-        // 3) real-time listener to keep userStyles up to date
         unsubscribeUserStyles = onSnapshot(userStylesRef, snapshot => {
           setStyles(prev => {
             // split off basic from prior state
@@ -130,10 +138,8 @@ export function GenerateDrawer() {
         });
       }
 
-      // 4) store initial combined list
       setStyles(combined);
 
-      // 5) reset selected index if it falls off the list
       if (combined.length && selectedStyleIdx >= combined.length) {
         setSelectedStyleIdx(0);
       }
