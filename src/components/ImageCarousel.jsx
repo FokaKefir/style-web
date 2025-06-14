@@ -27,7 +27,7 @@ export default function ImageCarousel({ images, selectedIndex, setSelectedIndex 
         <motion.div
           layout
           className="flex items-center overflow-hidden relative z-0"
-          style={{ width: 440, height: 160 }}
+          style={{ width: 330, height: 120 }}
         >
           {visible.map((imgIdx, pos) => {
             const isCenter = pos === 1;
@@ -57,10 +57,10 @@ export default function ImageCarousel({ images, selectedIndex, setSelectedIndex 
                   isCenter ? 'border-4 border-blue-500 z-10' : ''
                 }`}
                 style={{
-                  width: isCenter ? 160 : 120,
-                  height: isCenter ? 128 : 96,
-                  marginLeft: pos === 0 ? 0 : 16,
-                  marginRight: pos === 2 ? 0 : 16,
+                  width: isCenter ? 120 : 90,
+                  height: isCenter ? 96 : 72,
+                  marginLeft: pos === 0 ? 0 : 12,
+                  marginRight: pos === 2 ? 0 : 12,
                 }}
               />
             );
