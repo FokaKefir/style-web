@@ -23,13 +23,64 @@ import {
 } from "./ui/alert-dialog";
 
 // Utility functions for image operations
-export const checkIfStyleAddable = async (style, currentUser, setShowAddStyle) => {
-  if (!style?.given && currentUser) {
-    const userStylesRef = collection(db, "users", currentUser.uid, "styles");
-    const q = query(userStylesRef, where("image", "==", style.image));
-    const querySnapshot = await getDocs(q);
-    setShowAddStyle(querySnapshot.empty);
+export const checkIfStyleAddable = async (styleOrMetadata, currentUser, setShowAddStyle) => {
+  if (!currentUser) {
+    setShowAddStyle(false);
+    return;
   }
+
+  const userStylesRef = collection(db, "users", currentUser.uid, "styles");
+  let hasAddableStyles = false;
+
+  try {
+    // Check if this is segmentation data
+    if (styleOrMetadata?.generationType === "segmentation") {
+      // Check person style
+      if (styleOrMetadata.personStyle && 
+          !styleOrMetadata.personStyle.given && 
+          styleOrMetadata.personStyle.image) {
+        const q1 = query(userStylesRef, where("image", "==", styleOrMetadata.personStyle.image));
+        const querySnapshot1 = await getDocs(q1);
+        if (querySnapshot1.empty) {
+          hasAddableStyles = true;
+        }
+      }
+      
+      // Check background style
+      if (styleOrMetadata.backgroundStyle && 
+          !styleOrMetadata.backgroundStyle.given && 
+          styleOrMetadata.backgroundStyle.image) {
+        const q2 = query(userStylesRef, where("image", "==", styleOrMetadata.backgroundStyle.image));
+        const querySnapshot2 = await getDocs(q2);
+        if (querySnapshot2.empty) {
+          hasAddableStyles = true;
+        }
+      }
+    } else {
+      // Basic generation - check single style
+      if (styleOrMetadata?.style && 
+          !styleOrMetadata.style.given && 
+          styleOrMetadata.style.image) {
+        const q = query(userStylesRef, where("image", "==", styleOrMetadata.style.image));
+        const querySnapshot = await getDocs(q);
+        hasAddableStyles = querySnapshot.empty;
+      }
+      // Handle direct style object (for backward compatibility)
+      else if (styleOrMetadata && 
+               styleOrMetadata.image && 
+               !styleOrMetadata.given && 
+               typeof styleOrMetadata.name === 'string') {
+        const q = query(userStylesRef, where("image", "==", styleOrMetadata.image));
+        const querySnapshot = await getDocs(q);
+        hasAddableStyles = querySnapshot.empty;
+      }
+    }
+  } catch (error) {
+    console.error("Error checking if style is addable:", error);
+    hasAddableStyles = false;
+  }
+
+  setShowAddStyle(hasAddableStyles);
 };
 
 export const handleImageDelete = async (documentId, onDelete, setIsOpen) => {
@@ -101,19 +152,289 @@ export const handleStyleAdd = async (style, currentUser, setShowAddStyle) => {
   }
 };
 
+// Helper functions for rendering different sections
+const renderStyleImages = (metadata) => {
+  const isSegmentation = metadata?.generationType === "segmentation";
+  
+  if (isSegmentation) {
+    const hasPersonStyle = metadata.personStyle;
+    const hasBackgroundStyle = metadata.backgroundStyle;
+    const totalStyles = (hasPersonStyle ? 1 : 0) + (hasBackgroundStyle ? 1 : 0);
+    
+    if (totalStyles === 0) {
+      // No styles enabled, show only content
+      return (
+        <div className="grid grid-cols-1 gap-6 w-full">
+          <div className="flex flex-col items-center w-full">
+            <h4 className="font-medium mb-2 text-sm text-gray-600">Content Image</h4>
+            <div className="flex justify-center items-center w-full aspect-square bg-gray-50">
+              <img
+                src={metadata?.contentImage}
+                alt="Content"
+                className="w-full h-full rounded-xl object-contain shadow-md"
+              />
+            </div>
+          </div>
+        </div>
+      );
+    } else if (totalStyles === 1) {
+      // One style enabled, show like basic (content + style side by side)
+      const activeStyle = hasPersonStyle ? metadata.personStyle : metadata.backgroundStyle;
+      return (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 w-full">
+          <div className="flex flex-col items-center w-full">
+            <h4 className="font-medium mb-2 text-sm text-gray-600">Content Image</h4>
+            <div className="flex justify-center items-center w-full aspect-square bg-gray-50">
+              <img
+                src={metadata?.contentImage}
+                alt="Content"
+                className="w-full h-full rounded-xl object-contain shadow-md"
+              />
+            </div>
+          </div>
+          <div className="flex flex-col items-center w-full">
+            <h4 className="font-medium mb-2 text-sm text-gray-600">Style Image</h4>
+            <div className="flex justify-center items-center w-full aspect-square rounded-lg overflow-hidden">
+              <img
+                src={activeStyle.image}
+                alt="Style"
+                className="w-full h-full rounded-xl object-cover shadow-md"
+              />
+            </div>
+          </div>
+        </div>
+      );
+    } else {
+      // Two styles enabled, show content + both styles in split view
+      return (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 w-full">
+          <div className="flex flex-col items-center w-full">
+            <h4 className="font-medium mb-2 text-sm text-gray-600">Content Image</h4>
+            <div className="flex justify-center items-center w-full aspect-square bg-gray-50 rounded-xl overflow-hidden">
+              <img
+                src={metadata?.contentImage}
+                alt="Content"
+                className="w-full h-full object-contain shadow-md"
+              />
+            </div>
+          </div>
+          <div className="flex flex-col items-center w-full">
+            <h4 className="font-medium mb-2 text-sm text-gray-600">Style Images</h4>
+            <div className="relative w-full aspect-square rounded-xl overflow-hidden shadow-md">
+              {hasPersonStyle && (
+                <div className="absolute inset-0 w-full h-full" style={{ clipPath: 'polygon(0 0, 100% 0, 0 100%)' }}>
+                  <img
+                    src={metadata.personStyle.image}
+                    alt="Person Style"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              )}
+              {hasBackgroundStyle && (
+                <div className="absolute inset-0 w-full h-full" style={{ clipPath: 'polygon(100% 0, 100% 100%, 0 100%)' }}>
+                  <img
+                    src={metadata.backgroundStyle.image}
+                    alt="Background Style"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              )}
+              {/* Diagonal divider line */}
+              <div className="absolute inset-0 w-full h-full pointer-events-none">
+                <svg className="w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+                  <line x1="0" y1="100" x2="100" y2="0" stroke="white" strokeWidth="0.5" opacity="0.6" />
+                </svg>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+  } else {
+    // Basic generation type (default)
+    return (
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 w-full">
+        <div className="flex flex-col items-center w-full">
+          <h4 className="font-medium mb-2 text-sm text-gray-600">Content Image</h4>
+          <div className="flex justify-center items-center w-full aspect-square bg-gray-50">
+            <img
+              src={metadata?.contentImage}
+              alt="Content"
+              className="w-full h-full rounded-xl object-contain shadow-md"
+            />
+          </div>
+        </div>
+        <div className="flex flex-col items-center w-full">
+          <h4 className="font-medium mb-2 text-sm text-gray-600">Style Image</h4>
+          <div className="flex justify-center items-center w-full aspect-square rounded-lg overflow-hidden">
+            <img
+              src={metadata?.style?.image}
+              alt="Style"
+              className="w-full h-full rounded-xl object-cover shadow-md"
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
+};
+
+const renderStyleInformation = (metadata, showAddStyle, currentUser, setShowAddStyle) => {
+  const isSegmentation = metadata?.generationType === "segmentation";
+  
+  if (isSegmentation) {
+    const hasPersonStyle = metadata.personStyle;
+    const hasBackgroundStyle = metadata.backgroundStyle;
+    const totalStyles = (hasPersonStyle ? 1 : 0) + (hasBackgroundStyle ? 1 : 0);
+    
+    return (
+      <div>
+        <h4 className="font-medium mb-2">Style Information</h4>
+        <div className="bg-gray-50 p-4 rounded-lg space-y-3">
+          {totalStyles === 0 ? (
+            // No styles
+            <p>No styles applied</p>
+          ) : totalStyles === 1 ? (
+            // Single style - display like basic
+            <p>Style Name: {hasPersonStyle ? metadata.personStyle.name : metadata.backgroundStyle.name}</p>
+          ) : (
+            // Two styles - display both with specific labels
+            <>
+              {hasPersonStyle && (
+                <p>Person Style Name: {metadata.personStyle.name}</p>
+              )}
+              {hasBackgroundStyle && (
+                <p>Background Style Name: {metadata.backgroundStyle.name}</p>
+              )}
+            </>
+          )}
+          
+          {showAddStyle && metadata.personStyle && !metadata.personStyle.given && (
+            <button
+              onClick={() => handleStyleAdd(metadata.personStyle, currentUser, setShowAddStyle)}
+              className="mt-2 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition w-full"
+            >
+              Add Person Style to Collection
+            </button>
+          )}
+          {showAddStyle && metadata.backgroundStyle && !metadata.backgroundStyle.given && (
+            <button
+              onClick={() => handleStyleAdd(metadata.backgroundStyle, currentUser, setShowAddStyle)}
+              className="mt-2 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition w-full"
+            >
+              Add Background Style to Collection
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  } else {
+    // Basic generation type (default)
+    return (
+      <div>
+        <h4 className="font-medium mb-2">Style Information</h4>
+        <div className="bg-gray-50 p-4 rounded-lg space-y-2">
+          <p>Style Name: {metadata?.style?.name}</p>
+          {showAddStyle && (
+            <button
+              onClick={() => handleStyleAdd(metadata.style, currentUser, setShowAddStyle)}
+              className="mt-2 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition w-full"
+            >
+              Add Style to Collection
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+};
+
+const renderGenerationSettings = (metadata) => {
+  const isSegmentation = metadata?.generationType === "segmentation";
+  
+  if (isSegmentation) {
+    return (
+      <div>
+        <h4 className="font-medium mb-2">Generation Settings</h4>
+        <div className="bg-gray-50 p-4 rounded-lg space-y-2">
+          {metadata.personStyle && (
+            <p>Person Style Strength: lvl. {metadata.segPersonStyleSliderVal}</p>
+          )}
+          {metadata.backgroundStyle && (
+            <p>Background Style Strength: lvl. {metadata.segBackgroundStyleSliderVal}</p>
+          )}
+          <p>Smoothness: lvl. {metadata.tvSliderVal}</p>
+          <p>Duration: {metadata.iterations} iterations</p>
+          <p>Init Method: {metadata.initMethod}</p>
+        </div>
+      </div>
+    );
+  } else {
+    // Basic generation type (default)
+    return (
+      <div>
+        <h4 className="font-medium mb-2">Generation Settings</h4>
+        <div className="bg-gray-50 p-4 rounded-lg space-y-2">
+          <p>Stylishness: lvl. {metadata?.styleSliderVal}</p>
+          <p>Smoothness: lvl. {metadata?.tvSliderVal}</p>
+          <p>Duration: {metadata?.iterations} iterations</p>
+          <p>Init Method: {metadata?.initMethod}</p>
+        </div>
+      </div>
+    );
+  }
+};
+
+const renderAdditionalInformation = (metadata, onUserClick, setIsOpen) => {
+  // Handle both basic and segmentation metadata structures
+  const username = metadata?.username || metadata?.user?.username || 'Unknown';
+  const userId = metadata?.userId || metadata?.user?.uid;
+  const timestamp = metadata?.timestamp || metadata?.createdAt;
+  
+  return (
+    <div>
+      <h4 className="font-medium mb-2">Additional Information</h4>
+      <div className="bg-gray-50 p-4 rounded-lg space-y-2">
+        <p>Created by: 
+          <span 
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (setIsOpen) setIsOpen(false);
+              if (onUserClick && userId) {
+                if (setIsOpen) {
+                  onUserClick({
+                    uid: userId,
+                    username: username
+                  });
+                } else {
+                  setTimeout(() => onUserClick(), 100);
+                }
+              }
+            }}
+            className="text-blue-600 hover:underline cursor-pointer ml-1"
+          >
+            {username}
+          </span>
+        </p>
+        <p>Created at: {timestamp?.toDate ? timestamp.toDate().toLocaleString() : (timestamp ? new Date(timestamp).toLocaleString() : 'Unknown')}</p>
+      </div>
+    </div>
+  );
+};
+
 export const ImageDialog = ({ isOpen, setIsOpen, image, onDelete, onUserClick }) => {
   const [showAddStyle, setShowAddStyle] = useState(false);
   const currentUser = auth.currentUser;
 
   useEffect(() => {
-    if (image?.style) {
-      checkIfStyleAddable(image.style, currentUser, setShowAddStyle);
+    if (image?.generationType === "segmentation" || image?.style) {
+      checkIfStyleAddable(image, currentUser, setShowAddStyle);
     }
-  }, [image?.style, currentUser]);
+  }, [image, currentUser]);
 
   const handleDelete = () => handleImageDelete(image.id, onDelete, setIsOpen);
   const handleDownload = () => handleImageDownload(image.outputImage, image.id);
-  const handleAddStyle = () => handleStyleAdd(image.style, currentUser, setShowAddStyle);
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
@@ -133,28 +454,7 @@ export const ImageDialog = ({ isOpen, setIsOpen, image, onDelete, onUserClick })
               </div>
             </div>
             
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 w-full">
-              <div className="flex flex-col items-center w-full">
-                <h4 className="font-medium mb-2 text-sm text-gray-600">Content Image</h4>
-                <div className="flex justify-center items-center w-full aspect-square bg-gray-50">
-                  <img
-                    src={image?.contentImage}
-                    alt="Content"
-                    className="w-full h-full rounded-xl object-contain shadow-md"
-                  />
-                </div>
-              </div>
-              <div className="flex flex-col items-center w-full">
-                <h4 className="font-medium mb-2 text-sm text-gray-600">Style Image</h4>
-                <div className="flex justify-center items-center w-full aspect-square rounded-lg overflow-hidden">
-                  <img
-                    src={image?.style?.image}
-                    alt="Style"
-                    className="w-full h-full rounded-xl object-cover shadow-md"
-                  />
-                </div>
-              </div>
-            </div>
+            {renderStyleImages(image)}
 
             <div className="flex justify-between items-center">
               <button
@@ -192,55 +492,9 @@ export const ImageDialog = ({ isOpen, setIsOpen, image, onDelete, onUserClick })
           </div>
 
           <div className="space-y-6">
-            <div>
-              <h4 className="font-medium mb-2">Style Information</h4>
-              <div className="bg-gray-50 p-4 rounded-lg space-y-2">
-                <p>Style Name: {image?.style?.name}</p>
-                {showAddStyle && (
-                  <button
-                    onClick={handleAddStyle}
-                    className="mt-2 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition w-full"
-                  >
-                    Add Style to Collection
-                  </button>
-                )}
-              </div>
-            </div>
-
-            <div>
-              <h4 className="font-medium mb-2">Generation Settings</h4>
-              <div className="bg-gray-50 p-4 rounded-lg space-y-2">
-                <p>Stylishness: lvl. {image?.styleSliderVal}</p>
-                <p>Smoothness: lvl. {image?.tvSliderVal}</p>
-                <p>Duration: {image?.iterations} iterations</p>
-                <p>Init Method: {image?.initMethod}</p>
-              </div>
-            </div>
-
-            <div>
-              <h4 className="font-medium mb-2">Additional Information</h4>
-              <div className="bg-gray-50 p-4 rounded-lg space-y-2">
-                <p>Created by: 
-                  <span 
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setIsOpen(false);
-                      if (onUserClick) {
-                        onUserClick({
-                          uid: image?.userId,
-                          username: image?.username
-                        });
-                      }
-                    }}
-                    className="text-blue-600 hover:underline cursor-pointer ml-1"
-                  >
-                    {image?.username}
-                  </span>
-                </p>
-                <p>Created at: {image?.timestamp?.toDate().toLocaleString()}</p>
-              </div>
-            </div>
+            {renderStyleInformation(image, showAddStyle, currentUser, setShowAddStyle)}
+            {renderGenerationSettings(image)}
+            {renderAdditionalInformation(image, onUserClick, setIsOpen)}
           </div>
         </div>
       </DialogContent>
@@ -254,14 +508,13 @@ const Images = ({ url, metadata, onDelete, onUserClick }) => {
   const currentUser = auth.currentUser;
 
   useEffect(() => {
-    if (metadata?.style) {
-      checkIfStyleAddable(metadata.style, currentUser, setShowAddStyle);
+    if (metadata?.generationType === "segmentation" || metadata?.style) {
+      checkIfStyleAddable(metadata, currentUser, setShowAddStyle);
     }
-  }, [metadata?.style, currentUser]);
+  }, [metadata, currentUser]);
 
   const handleDelete = () => handleImageDelete(metadata.documentId, onDelete, setIsOpen);
   const handleDownload = () => handleImageDownload(metadata.outputImage, metadata.documentId);
-  const handleAddStyle = () => handleStyleAdd(metadata.style, currentUser, setShowAddStyle);
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
@@ -288,28 +541,7 @@ const Images = ({ url, metadata, onDelete, onUserClick }) => {
               </div>
             </div>
             
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 w-full">
-              <div className="flex flex-col items-center w-full">
-                <h4 className="font-medium mb-2 text-sm text-gray-600">Content Image</h4>
-                <div className="flex justify-center items-center w-full aspect-square bg-gray-50">
-                  <img
-                    src={metadata.contentImage}
-                    alt="Content"
-                    className="w-full h-full rounded-xl object-contain shadow-md"
-                  />
-                </div>
-              </div>
-              <div className="flex flex-col items-center w-full">
-                <h4 className="font-medium mb-2 text-sm text-gray-600">Style Image</h4>
-                <div className="flex justify-center items-center w-full aspect-square rounded-lg overflow-hidden">
-                  <img
-                    src={metadata.style.image}
-                    alt="Style"
-                    className="w-full h-full rounded-xl object-cover shadow-md"
-                  />
-                </div>
-              </div>
-            </div>
+            {renderStyleImages(metadata)}
 
             <div className="flex justify-between items-center">
               <button
@@ -347,52 +579,9 @@ const Images = ({ url, metadata, onDelete, onUserClick }) => {
           </div>
 
           <div className="space-y-6">
-            <div>
-              <h4 className="font-medium mb-2">Style Information</h4>
-              <div className="bg-gray-50 p-4 rounded-lg space-y-2">
-                <p>Style Name: {metadata.style.name}</p>
-                {showAddStyle && (
-                  <button
-                    onClick={handleAddStyle}
-                    className="mt-2 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition w-full"
-                  >
-                    Add Style to Collection
-                  </button>
-                )}
-              </div>
-            </div>
-
-            <div>
-              <h4 className="font-medium mb-2">Generation Settings</h4>
-              <div className="bg-gray-50 p-4 rounded-lg space-y-2">
-                <p>Stylishness: lvl. {metadata.styleSliderVal}</p>
-                <p>Smoothness: lvl. {metadata.tvSliderVal}</p>
-                <p>Duration: {metadata.iterations} iterations</p>
-                <p>Init Method: {metadata.initMethod}</p>
-              </div>
-            </div>
-
-            <div>
-              <h4 className="font-medium mb-2">Additional Information</h4>
-              <div className="bg-gray-50 p-4 rounded-lg space-y-2">
-                <p>Created by: 
-                  <span 
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setIsOpen(false);
-                      if (onUserClick) {
-                        setTimeout(() => onUserClick(), 100);
-                      }
-                    }}
-                    className="text-blue-600 hover:underline cursor-pointer ml-1"
-                  >
-                    {metadata.username}
-                  </span>
-                </p>
-                <p>Created at: {metadata.timestamp?.toDate().toLocaleString()}</p>
-              </div>
-            </div>
+            {renderStyleInformation(metadata, showAddStyle, currentUser, setShowAddStyle)}
+            {renderGenerationSettings(metadata)}
+            {renderAdditionalInformation(metadata, onUserClick, setIsOpen)}
           </div>
         </div>
       </DialogContent>

@@ -316,6 +316,8 @@ export function GenerateDrawer() {
           backgroundStyleWeight,
           segPersonStyleEnabled,
           segBackgroundStyleEnabled,
+          segPersonStyleSliderVal: segPersonStyleSliderVal,
+          segBackgroundStyleSliderVal: segBackgroundStyleSliderVal,
           tvSliderVal: currentTvVal,
           tvWeight,
           iterations: currentIterations,
