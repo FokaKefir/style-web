@@ -76,7 +76,12 @@ export default function Gallery() {
   };
 
   const handleUserSelect = (userData) => {
-    setSelectedUser(userData);
+    // If the same user is already selected, close the panel
+    if (selectedUser && selectedUser.uid === userData.uid) {
+      handleClose();
+    } else {
+      setSelectedUser(userData);
+    }
   };
 
   return (

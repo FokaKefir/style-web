@@ -52,14 +52,15 @@ export function GenerateDrawer() {
   const [segPersonStyleEnabled, setSegPersonStyleEnabled] = useState(true);
   const [segBackgroundStyleEnabled, setSegBackgroundStyleEnabled] = useState(true);
 
-  // Multi-style form states
-  const [multiStyleSliderVal, setMultiStyleWeight] = useState(1);
-  const [multiTvSliderVal, setMultiTvWeight] = useState(1);
-  const [multiIterations, setMultiIterations] = useState(500);
-  const [multiSelectedImageFile, setMultiSelectedImageFile] = useState(null);
-  const [multiInitMethod, setMultiInitMethod] = useState("random");
-  const [multiSelectedStyles, setMultiSelectedStyles] = useState([]);
-  const [blendMode, setBlendMode] = useState("average");
+  // Mixed form states
+  const [mixedStyleSliderVal, setMixedStyleWeight] = useState(1);
+  const [mixedTvSliderVal, setMixedTvWeight] = useState(1);
+  const [mixedIterations, setMixedIterations] = useState(500);
+  const [mixedSelectedImageFile, setMixedSelectedImageFile] = useState(null);
+  const [mixedInitMethod, setMixedInitMethod] = useState("content");
+  const [mixedStyle1Idx, setMixedStyle1Idx] = useState(0);
+  const [mixedStyle2Idx, setMixedStyle2Idx] = useState(1);
+  const [mixedAlpha, setMixedAlpha] = useState(0.5);
 
   // Track current active tab
   const [activeTab, setActiveTab] = useState("basic");
@@ -199,14 +200,15 @@ export function GenerateDrawer() {
     setSegPersonStyleEnabled(true);
     setSegBackgroundStyleEnabled(true);
     
-    // Multi-style tab states
-    setMultiSelectedImageFile(null);
-    setMultiStyleWeight(1);
-    setMultiTvWeight(1);
-    setMultiIterations(500);
-    setMultiInitMethod("random");
-    setMultiSelectedStyles([]);
-    setBlendMode("average");
+    // Mixed tab states
+    setMixedSelectedImageFile(null);
+    setMixedStyle1Idx(0);
+    setMixedStyle2Idx(1);
+    setMixedStyleWeight(1);
+    setMixedTvWeight(1);
+    setMixedIterations(500);
+    setMixedInitMethod("content");
+    setMixedAlpha(0.5);
   };
 
   const styleSliderValToWeight = (weight) => {
@@ -233,32 +235,20 @@ export function GenerateDrawer() {
     }
   };
 
-  const handleMultiImageSelect = e => {
+  const handleMixedImageSelect = e => {
     const f = e.target.files[0];
     if (f) {
-      setMultiSelectedImageFile(f);
+      setMixedSelectedImageFile(f);
     }
-  };
-
-  const toggleMultiStyle = (styleIndex) => {
-    setMultiSelectedStyles(prev => {
-      if (prev.includes(styleIndex)) {
-        return prev.filter(idx => idx !== styleIndex);
-      } else {
-        return [...prev, styleIndex];
-      }
-    });
   };
 
    const handleGenerate = async () => {
     // Get current tab data
-    let currentImageFile, currentStyleIdx, currentStyleVal, currentTvVal, currentIterations, currentInitMethod;
+    let currentImageFile, currentTvVal, currentIterations, currentInitMethod;
     
     if (activeTab === "basic") {
       if (!selectedImageFile) return alert("Please select an image first!");
       currentImageFile = selectedImageFile;
-      currentStyleIdx = selectedStyleIdx;
-      currentStyleVal = styleSliderVal;
       currentTvVal = tvSliderVal;
       currentIterations = iterations;
       currentInitMethod = initMethod;
@@ -273,15 +263,13 @@ export function GenerateDrawer() {
       currentTvVal = segTvSliderVal;
       currentIterations = segIterations;
       currentInitMethod = segInitMethod;
-    } else if (activeTab === "multi-style") {
-      if (!multiSelectedImageFile) return alert("Please select an image first!");
-      if (multiSelectedStyles.length < 2) return alert("Please select at least 2 styles for multi-style generation!");
-      currentImageFile = multiSelectedImageFile;
-      currentStyleIdx = multiSelectedStyles[0]; // Use first selected style as primary
-      currentStyleVal = multiStyleSliderVal;
-      currentTvVal = multiTvSliderVal;
-      currentIterations = multiIterations;
-      currentInitMethod = multiInitMethod;
+    } else if (activeTab === "mixed") {
+      if (!mixedSelectedImageFile) return alert("Please select an image first!");
+      if (mixedStyle1Idx === mixedStyle2Idx) return alert("Style 1 and Style 2 must be different!");
+      currentImageFile = mixedSelectedImageFile;
+      currentTvVal = mixedTvSliderVal;
+      currentIterations = mixedIterations;
+      currentInitMethod = mixedInitMethod;
     }
 
     setIsGenerating(true);
@@ -374,61 +362,53 @@ export function GenerateDrawer() {
         setOpen(false);
         clearContent();
         await backendPromise;
-      } else {
-        // Handle basic and multi-style generation (existing logic)
-        const styleWeight = styleSliderValToWeight(currentStyleVal);
+      } else if (activeTab === "mixed") {
+        // Handle mixed generation
+        const styleWeight = styleSliderValToWeight(mixedStyleSliderVal);
         const tvWeight = tvSliderValToWeight(currentTvVal);
         const genData = {
           userId: auth.currentUser.uid,
           username,
           outputImage: `${process.env.REACT_APP_BACKEND_URL}/image/generated/loading.gif`,
           contentImage: `${process.env.REACT_APP_BACKEND_URL}/image/content/${image_name}`,
-          style: styles[currentStyleIdx],
+          style1: styles[mixedStyle1Idx],
+          style2: styles[mixedStyle2Idx],
           initMethod: currentInitMethod,
-          styleSliderVal: currentStyleVal,
+          styleSliderVal: mixedStyleSliderVal,
           styleWeight,
           tvSliderVal: currentTvVal,
           tvWeight,
           iterations: currentIterations,
+          alpha: mixedAlpha,
           generationType: activeTab,
           timestamp: serverTimestamp(),
         };
 
-        // Add tab-specific data for multi-style
-        if (activeTab === "multi-style") {
-          genData.selectedStyles = multiSelectedStyles.map(idx => styles[idx]);
-          genData.blendMode = blendMode;
-          genData.multiStyleCount = multiSelectedStyles.length;
-        }
-
         const genRef = await addDoc(collection(db, "gens"), genData);
 
-        // 3) Kick off backend /generate but don't block forever
-        let didError = false;
-        const styleImgName = styles[currentStyleIdx].image.replace(
+        const style1ImgName = styles[mixedStyle1Idx].image.replace(
           `${process.env.REACT_APP_BACKEND_URL}/image/style/`,
           ""
         );
-        
-        // Build URL params based on generation type
+        const style2ImgName = styles[mixedStyle2Idx].image.replace(
+          `${process.env.REACT_APP_BACKEND_URL}/image/style/`,
+          ""
+        );
+
         const params = {
           doc_id: genRef.id,
           content_img: image_name,
-          style_img: styleImgName,
+          style_img_1: style1ImgName,
+          style_img_2: style2ImgName,
           init_method: currentInitMethod,
           style_weight: styleWeight,
+          alpha: mixedAlpha,
           tv_weight: tvWeight,
           iterations: currentIterations,
-          generation_type: activeTab,
         };
 
-        if (activeTab === "multi-style") {
-          params.blend_mode = blendMode;
-          params.selected_styles = multiSelectedStyles.join(",");
-        }
-
         const backendPromise = fetch(
-          `${process.env.REACT_APP_BACKEND_URL}/generate?` +
+          `${process.env.REACT_APP_BACKEND_URL}/generate_mixed?` +
             new URLSearchParams(params).toString(),
           { method: "POST" }
         )
@@ -437,21 +417,15 @@ export function GenerateDrawer() {
             return res;
           })
           .catch(err => {
-            didError = true;
             console.error("Generate error:", err);
           });
 
-        // 4) If we get no error for 2 s, close + clear
         await Promise.race([
           backendPromise,
           new Promise(resolve => setTimeout(resolve, 2000))
         ]);
-        if (!didError) {
-          setOpen(false);
-          clearContent();
-        }
-
-        // (optional) let backend finish in background
+        setOpen(false);
+        clearContent();
         await backendPromise;
       }
     } catch (err) {
@@ -488,7 +462,7 @@ export function GenerateDrawer() {
             <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="basic">Basic</TabsTrigger>
               <TabsTrigger value="segmentation">Segmentation</TabsTrigger>
-              <TabsTrigger value="multi-style">Multi-Style</TabsTrigger>
+              <TabsTrigger value="mixed">Mixed</TabsTrigger>
             </TabsList>
 
             <TabsContent value="basic">
@@ -725,16 +699,16 @@ export function GenerateDrawer() {
               </div>
             </TabsContent>
 
-            <TabsContent value="multi-style">
+            <TabsContent value="mixed">
               <div className="flex flex-col gap-6 py-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
-                  <div className="space-y-2">
+                  <div className="space-y-6">
                     <div>
                       <h3 className="font-medium mb-4">Content Image</h3>
                       <div className="h-48 border-2 border-dashed rounded-lg flex items-center justify-center relative overflow-hidden">
-                        {multiSelectedImageFile ? (
+                        {mixedSelectedImageFile ? (
                           <img
-                            src={URL.createObjectURL(multiSelectedImageFile)}
+                            src={URL.createObjectURL(mixedSelectedImageFile)}
                             alt="Content preview"
                             className="h-full object-contain"
                           />
@@ -749,7 +723,7 @@ export function GenerateDrawer() {
                         <input
                           type="file"
                           accept="image/*"
-                          onChange={handleMultiImageSelect}
+                          onChange={handleMixedImageSelect}
                           className="absolute inset-0 opacity-0 cursor-pointer"
                         />
                       </div>
@@ -757,93 +731,36 @@ export function GenerateDrawer() {
                     </div>
                     
                     <div>
-                      <h3 className="font-medium mb-4">
-                        Select Multiple Styles ({multiSelectedStyles.length} selected)
-                      </h3>
-                      <div className="grid grid-cols-3 gap-2 max-h-64 overflow-y-auto border rounded-lg p-2">
-                        {styles.map((style, index) => (
-                          <div
-                            key={index}
-                            className={`relative cursor-pointer border-2 rounded-lg overflow-hidden ${
-                              multiSelectedStyles.includes(index)
-                                ? 'border-blue-500 ring-2 ring-blue-200'
-                                : 'border-gray-200 hover:border-gray-300'
-                            }`}
-                            onClick={() => toggleMultiStyle(index)}
-                          >
-                            <img
-                              src={style.image}
-                              alt={`Style ${index + 1}`}
-                              className="w-full h-16 object-cover"
-                            />
-                            {multiSelectedStyles.includes(index) && (
-                              <div className="absolute top-1 right-1 w-4 h-4 bg-blue-500 rounded-full flex items-center justify-center">
-                                <span className="text-white text-xs">✓</span>
-                              </div>
-                            )}
-                          </div>
-                        ))}
+                      <h3 className="font-medium mb-1">Style 1</h3>
+                      <div className="w-full flex justify-center">
+                        <ImageCarousel
+                          images={styles.map(s => s.image || "")}
+                          selectedIndex={mixedStyle1Idx}
+                          setSelectedIndex={setMixedStyle1Idx}
+                        />
                       </div>
-                      <p className="text-xs text-gray-500 mt-2">
-                        Click on styles to select multiple. Minimum 2 styles required.
-                      </p>
+                    </div>
+
+                    <div>
+                      <h3 className="font-medium mb-1">Style 2</h3>
+                      <div className="w-full flex justify-center">
+                        <ImageCarousel
+                          images={styles.map(s => s.image || "")}
+                          selectedIndex={mixedStyle2Idx}
+                          setSelectedIndex={setMixedStyle2Idx}
+                        />
+                      </div>
                     </div>
                   </div>
 
                   <div className="space-y-6">
                     <div className="space-y-4">
-                      <h3 className="font-medium">Multi-Style Settings</h3>
-                      
-                      <div>
-                        <label className="text-sm font-medium mb-2 block">Blend Mode</label>
-                        <select 
-                          className="w-full rounded-md border border-input bg-white px-3 py-2 text-sm ring-offset-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                          value={blendMode}
-                          onChange={(e) => setBlendMode(e.target.value)}
-                        >
-                          <option value="average">Average Blend</option>
-                          <option value="weighted">Weighted Blend</option>
-                          <option value="sequential">Sequential Application</option>
-                          <option value="regions">Region-based Blend</option>
-                          <option value="frequency">Frequency Domain Blend</option>
-                        </select>
-                      </div>
-
-                      {multiSelectedStyles.length > 0 && (
-                        <div>
-                          <label className="text-sm font-medium mb-2 block">Style Weights</label>
-                          <div className="space-y-2 max-h-32 overflow-y-auto">
-                            {multiSelectedStyles.map((styleIdx, i) => (
-                              <div key={styleIdx} className="flex items-center space-x-2">
-                                <img
-                                  src={styles[styleIdx]?.image}
-                                  alt={`Style ${styleIdx + 1}`}
-                                  className="w-8 h-8 object-cover rounded"
-                                />
-                                <span className="text-xs min-w-0 flex-1 truncate">
-                                  Style {styleIdx + 1}
-                                </span>
-                                <input
-                                  type="range"
-                                  min="0.1"
-                                  max="2.0"
-                                  step="0.1"
-                                  defaultValue="1.0"
-                                  className="w-16"
-                                />
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="space-y-4">
                       <h3 className="font-medium">Style Parameters</h3>
+                      
                       <Slider
-                        label="Overall Stylishness"
-                        value={multiStyleSliderVal}
-                        onValueChange={setMultiStyleWeight}
+                        label="Stylishness"
+                        value={mixedStyleSliderVal}
+                        onValueChange={setMixedStyleWeight}
                         min={0}
                         max={5}
                         step={0.5}
@@ -851,9 +768,19 @@ export function GenerateDrawer() {
                       />
 
                       <Slider
+                        label="Style Balance (0 = Style 1, 1 = Style 2)"
+                        value={mixedAlpha}
+                        onValueChange={setMixedAlpha}
+                        min={0}
+                        max={1}
+                        step={0.1}
+                        className="w-full"
+                      />
+
+                      <Slider
                         label="Smoothness"
-                        value={multiTvSliderVal}
-                        onValueChange={setMultiTvWeight}
+                        value={mixedTvSliderVal}
+                        onValueChange={setMixedTvWeight}
                         min={0}
                         max={5}
                         step={1}
@@ -862,11 +789,11 @@ export function GenerateDrawer() {
 
                       <Slider
                         label="Duration"
-                        value={multiIterations}
-                        onValueChange={setMultiIterations}
-                        min={750}
-                        max={5000}
-                        step={250}
+                        value={mixedIterations}
+                        onValueChange={setMixedIterations}
+                        min={500}
+                        max={3000}
+                        step={500}
                         className="w-full"
                       />
                     </div>
@@ -875,13 +802,11 @@ export function GenerateDrawer() {
                       <h3 className="font-medium mb-2">Initialization Method</h3>
                       <select 
                         className="w-full rounded-md border border-input bg-white px-3 py-2 text-sm ring-offset-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                        value={multiInitMethod}
-                        onChange={(e) => setMultiInitMethod(e.target.value)}
+                        value={mixedInitMethod}
+                        onChange={(e) => setMixedInitMethod(e.target.value)}
                       >
-                        <option value="random">Random initialization</option>
                         <option value="content">Content-based initialization</option>
-                        <option value="blend">Blended style initialization</option>
-                        <option value="primary">Primary style initialization</option>
+                        <option value="style">Style-based initialization</option>
                       </select>
                     </div>
                   </div>
@@ -896,7 +821,7 @@ export function GenerateDrawer() {
               disabled={
                 (activeTab === "basic" && !selectedImageFile) ||
                 (activeTab === "segmentation" && (!segSelectedImageFile || (!segPersonStyleEnabled && !segBackgroundStyleEnabled) || (segPersonStyleEnabled && segBackgroundStyleEnabled && segPersonStyleIdx === segBackgroundStyleIdx))) ||
-                (activeTab === "multi-style" && (!multiSelectedImageFile || multiSelectedStyles.length < 2)) ||
+                (activeTab === "mixed" && (!mixedSelectedImageFile || mixedStyle1Idx === mixedStyle2Idx)) ||
                 isUploading ||
                 isGenerating
               }

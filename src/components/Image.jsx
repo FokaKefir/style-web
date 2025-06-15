@@ -25,12 +25,12 @@ import {
 // Utility functions for image operations
 export const checkIfStyleAddable = async (styleOrMetadata, currentUser, setShowAddStyle) => {
   if (!currentUser) {
-    setShowAddStyle(false);
+    setShowAddStyle({});
     return;
   }
 
   const userStylesRef = collection(db, "users", currentUser.uid, "styles");
-  let hasAddableStyles = false;
+  let addableStyles = {};
 
   try {
     // Check if this is segmentation data
@@ -41,9 +41,7 @@ export const checkIfStyleAddable = async (styleOrMetadata, currentUser, setShowA
           styleOrMetadata.personStyle.image) {
         const q1 = query(userStylesRef, where("image", "==", styleOrMetadata.personStyle.image));
         const querySnapshot1 = await getDocs(q1);
-        if (querySnapshot1.empty) {
-          hasAddableStyles = true;
-        }
+        addableStyles.personStyle = querySnapshot1.empty;
       }
       
       // Check background style
@@ -52,9 +50,24 @@ export const checkIfStyleAddable = async (styleOrMetadata, currentUser, setShowA
           styleOrMetadata.backgroundStyle.image) {
         const q2 = query(userStylesRef, where("image", "==", styleOrMetadata.backgroundStyle.image));
         const querySnapshot2 = await getDocs(q2);
-        if (querySnapshot2.empty) {
-          hasAddableStyles = true;
-        }
+        addableStyles.backgroundStyle = querySnapshot2.empty;
+      }
+    } else if (styleOrMetadata?.generationType === "mixed") {
+      // Check mixed generation styles
+      if (styleOrMetadata.style1 && 
+          !styleOrMetadata.style1.given && 
+          styleOrMetadata.style1.image) {
+        const q1 = query(userStylesRef, where("image", "==", styleOrMetadata.style1.image));
+        const querySnapshot1 = await getDocs(q1);
+        addableStyles.style1 = querySnapshot1.empty;
+      }
+      
+      if (styleOrMetadata.style2 && 
+          !styleOrMetadata.style2.given && 
+          styleOrMetadata.style2.image) {
+        const q2 = query(userStylesRef, where("image", "==", styleOrMetadata.style2.image));
+        const querySnapshot2 = await getDocs(q2);
+        addableStyles.style2 = querySnapshot2.empty;
       }
     } else {
       // Basic generation - check single style
@@ -63,7 +76,7 @@ export const checkIfStyleAddable = async (styleOrMetadata, currentUser, setShowA
           styleOrMetadata.style.image) {
         const q = query(userStylesRef, where("image", "==", styleOrMetadata.style.image));
         const querySnapshot = await getDocs(q);
-        hasAddableStyles = querySnapshot.empty;
+        addableStyles.style = querySnapshot.empty;
       }
       // Handle direct style object (for backward compatibility)
       else if (styleOrMetadata && 
@@ -72,15 +85,15 @@ export const checkIfStyleAddable = async (styleOrMetadata, currentUser, setShowA
                typeof styleOrMetadata.name === 'string') {
         const q = query(userStylesRef, where("image", "==", styleOrMetadata.image));
         const querySnapshot = await getDocs(q);
-        hasAddableStyles = querySnapshot.empty;
+        addableStyles.style = querySnapshot.empty;
       }
     }
   } catch (error) {
     console.error("Error checking if style is addable:", error);
-    hasAddableStyles = false;
+    addableStyles = {};
   }
 
-  setShowAddStyle(hasAddableStyles);
+  setShowAddStyle(addableStyles);
 };
 
 export const handleImageDelete = async (documentId, onDelete, setIsOpen) => {
@@ -125,7 +138,7 @@ export const handleImageDownload = async (outputImage, documentId) => {
   }
 };
 
-export const handleStyleAdd = async (style, currentUser, setShowAddStyle) => {
+export const handleStyleAdd = async (style, currentUser, setShowAddStyle, styleKey = null) => {
   if (!currentUser) {
     toast.error('Authentication required', {
       description: 'You must be logged in to add styles'
@@ -140,7 +153,17 @@ export const handleStyleAdd = async (style, currentUser, setShowAddStyle) => {
     return toast.promise(promise, {
       loading: 'Adding style...',
       success: () => {
-        setShowAddStyle(false);
+        if (styleKey) {
+          // For object-based showAddStyle, remove the specific style key
+          setShowAddStyle(prev => {
+            const newState = { ...prev };
+            delete newState[styleKey];
+            return newState;
+          });
+        } else {
+          // For backward compatibility with boolean showAddStyle
+          setShowAddStyle(false);
+        }
         return 'Style added successfully';
       },
       error: 'Failed to add style',
@@ -155,6 +178,7 @@ export const handleStyleAdd = async (style, currentUser, setShowAddStyle) => {
 // Helper functions for rendering different sections
 const renderStyleImages = (metadata) => {
   const isSegmentation = metadata?.generationType === "segmentation";
+  const isMixed = metadata?.generationType === "mixed";
   
   if (isSegmentation) {
     const hasPersonStyle = metadata.personStyle;
@@ -250,6 +274,47 @@ const renderStyleImages = (metadata) => {
         </div>
       );
     }
+  } else if (isMixed) {
+    // Mixed generation type - show content + both styles in diagonal split
+    return (
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 w-full">
+        <div className="flex flex-col items-center w-full">
+          <h4 className="font-medium mb-2 text-sm text-gray-600">Content Image</h4>
+          <div className="flex justify-center items-center w-full aspect-square bg-gray-50 rounded-xl overflow-hidden">
+            <img
+              src={metadata?.contentImage}
+              alt="Content"
+              className="w-full h-full object-contain shadow-md"
+            />
+          </div>
+        </div>
+        <div className="flex flex-col items-center w-full">
+          <h4 className="font-medium mb-2 text-sm text-gray-600">Mixed Styles</h4>
+          <div className="relative w-full aspect-square rounded-xl overflow-hidden shadow-md">
+            <div className="absolute inset-0 w-full h-full" style={{ clipPath: 'polygon(0 0, 100% 0, 0 100%)' }}>
+              <img
+                src={metadata.style1?.image}
+                alt="Style 1"
+                className="w-full h-full object-cover"
+              />
+            </div>
+            <div className="absolute inset-0 w-full h-full" style={{ clipPath: 'polygon(100% 0, 100% 100%, 0 100%)' }}>
+              <img
+                src={metadata.style2?.image}
+                alt="Style 2"
+                className="w-full h-full object-cover"
+              />
+            </div>
+            {/* Diagonal divider line */}
+            <div className="absolute inset-0 w-full h-full pointer-events-none">
+              <svg className="w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+                <line x1="0" y1="100" x2="100" y2="0" stroke="white" strokeWidth="0.5" opacity="0.6" />
+              </svg>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   } else {
     // Basic generation type (default)
     return (
@@ -281,6 +346,7 @@ const renderStyleImages = (metadata) => {
 
 const renderStyleInformation = (metadata, showAddStyle, currentUser, setShowAddStyle) => {
   const isSegmentation = metadata?.generationType === "segmentation";
+  const isMixed = metadata?.generationType === "mixed";
   
   if (isSegmentation) {
     const hasPersonStyle = metadata.personStyle;
@@ -309,20 +375,48 @@ const renderStyleInformation = (metadata, showAddStyle, currentUser, setShowAddS
             </>
           )}
           
-          {showAddStyle && metadata.personStyle && !metadata.personStyle.given && (
+          {showAddStyle?.personStyle && metadata.personStyle && !metadata.personStyle.given && (
             <button
-              onClick={() => handleStyleAdd(metadata.personStyle, currentUser, setShowAddStyle)}
+              onClick={() => handleStyleAdd(metadata.personStyle, currentUser, setShowAddStyle, 'personStyle')}
               className="mt-2 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition w-full"
             >
               Add Person Style to Collection
             </button>
           )}
-          {showAddStyle && metadata.backgroundStyle && !metadata.backgroundStyle.given && (
+          {showAddStyle?.backgroundStyle && metadata.backgroundStyle && !metadata.backgroundStyle.given && (
             <button
-              onClick={() => handleStyleAdd(metadata.backgroundStyle, currentUser, setShowAddStyle)}
+              onClick={() => handleStyleAdd(metadata.backgroundStyle, currentUser, setShowAddStyle, 'backgroundStyle')}
               className="mt-2 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition w-full"
             >
               Add Background Style to Collection
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  } else if (isMixed) {
+    // Mixed generation type
+    return (
+      <div>
+        <h4 className="font-medium mb-2">Style Information</h4>
+        <div className="bg-gray-50 p-4 rounded-lg space-y-3">
+          <p>Style 1: {metadata.style1?.name}</p>
+          <p>Style 2: {metadata.style2?.name}</p>
+          
+          {showAddStyle?.style1 && metadata.style1 && !metadata.style1.given && (
+            <button
+              onClick={() => handleStyleAdd(metadata.style1, currentUser, setShowAddStyle, 'style1')}
+              className="mt-2 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition w-full"
+            >
+              Add Style 1 to Collection
+            </button>
+          )}
+          {showAddStyle?.style2 && metadata.style2 && !metadata.style2.given && (
+            <button
+              onClick={() => handleStyleAdd(metadata.style2, currentUser, setShowAddStyle, 'style2')}
+              className="mt-2 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition w-full"
+            >
+              Add Style 2 to Collection
             </button>
           )}
         </div>
@@ -335,9 +429,9 @@ const renderStyleInformation = (metadata, showAddStyle, currentUser, setShowAddS
         <h4 className="font-medium mb-2">Style Information</h4>
         <div className="bg-gray-50 p-4 rounded-lg space-y-2">
           <p>Style Name: {metadata?.style?.name}</p>
-          {showAddStyle && (
+          {showAddStyle?.style && (
             <button
-              onClick={() => handleStyleAdd(metadata.style, currentUser, setShowAddStyle)}
+              onClick={() => handleStyleAdd(metadata.style, currentUser, setShowAddStyle, 'style')}
               className="mt-2 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition w-full"
             >
               Add Style to Collection
@@ -351,6 +445,7 @@ const renderStyleInformation = (metadata, showAddStyle, currentUser, setShowAddS
 
 const renderGenerationSettings = (metadata) => {
   const isSegmentation = metadata?.generationType === "segmentation";
+  const isMixed = metadata?.generationType === "mixed";
   
   if (isSegmentation) {
     return (
@@ -366,6 +461,19 @@ const renderGenerationSettings = (metadata) => {
           <p>Smoothness: lvl. {metadata.tvSliderVal}</p>
           <p>Duration: {metadata.iterations} iterations</p>
           <p>Init Method: {metadata.initMethod}</p>
+        </div>
+      </div>
+    );
+  } else if (isMixed) {
+    return (
+      <div>
+        <h4 className="font-medium mb-2">Generation Settings</h4>
+        <div className="bg-gray-50 p-4 rounded-lg space-y-2">
+          <p>Stylishness: lvl. {metadata?.styleSliderVal}</p>
+          <p>Style Balance: {Math.round((1 - metadata.alpha) * 100)}% / {Math.round(metadata.alpha * 100)}%</p>
+          <p>Smoothness: lvl. {metadata?.tvSliderVal}</p>
+          <p>Duration: {metadata?.iterations} iterations</p>
+          <p>Init Method: {metadata?.initMethod}</p>
         </div>
       </div>
     );
@@ -424,11 +532,11 @@ const renderAdditionalInformation = (metadata, onUserClick, setIsOpen) => {
 };
 
 export const ImageDialog = ({ isOpen, setIsOpen, image, onDelete, onUserClick }) => {
-  const [showAddStyle, setShowAddStyle] = useState(false);
+  const [showAddStyle, setShowAddStyle] = useState({});
   const currentUser = auth.currentUser;
 
   useEffect(() => {
-    if (image?.generationType === "segmentation" || image?.style) {
+    if (image?.generationType === "segmentation" || image?.generationType === "mixed" || image?.style) {
       checkIfStyleAddable(image, currentUser, setShowAddStyle);
     }
   }, [image, currentUser]);
@@ -504,11 +612,11 @@ export const ImageDialog = ({ isOpen, setIsOpen, image, onDelete, onUserClick })
 
 const Images = ({ url, metadata, onDelete, onUserClick }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const [showAddStyle, setShowAddStyle] = useState(false);
+  const [showAddStyle, setShowAddStyle] = useState({});
   const currentUser = auth.currentUser;
 
   useEffect(() => {
-    if (metadata?.generationType === "segmentation" || metadata?.style) {
+    if (metadata?.generationType === "segmentation" || metadata?.generationType === "mixed" || metadata?.style) {
       checkIfStyleAddable(metadata, currentUser, setShowAddStyle);
     }
   }, [metadata, currentUser]);
