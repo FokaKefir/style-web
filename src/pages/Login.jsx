@@ -101,6 +101,17 @@ export default function Login() {
 
   return (
     <div className="w-full max-w-md space-y-4">
+      {/* App Logo and Name Header */}
+      <div className="flex flex-col items-center mb-6">
+        <img 
+          src="/logo.png" 
+          alt="Style Gallery Logo" 
+          className="h-16 w-16 mb-4"
+        />
+        <h1 className="text-3xl font-bold text-gray-800">Style Gallery</h1>
+        <p className="text-gray-600 text-center mt-2">Transform your images with AI-powered style transfer</p>
+      </div>
+
       {alert && (
         <Alert variant={alert.type === "error" ? "destructive" : "default"} className="mb-4">
           {alert.type === "error" ? 

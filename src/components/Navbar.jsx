@@ -20,7 +20,14 @@ export default function Navbar({ onProfileClick }) {
   return (
     <nav className="bg-slate-800 p-4 fixed top-0 left-0 right-0 z-50">
       <div className="container mx-auto flex justify-between items-center">
-        <div className="text-white text-xl font-bold">Style Gallery</div>
+        <div className="flex items-center gap-3">
+          <img 
+            src="/logo.png" 
+            alt="Style Gallery Logo" 
+            className="h-8 w-8"
+          />
+          <span className="text-white text-xl font-bold">Style Gallery</span>
+        </div>
         <div className="flex items-center gap-4">
           <UserProfile 
             userData={user} 
