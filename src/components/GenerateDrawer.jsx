@@ -286,7 +286,65 @@ export function GenerateDrawer() {
       const { image_name } = await res.json();
       setIsUploading(false);
 
-      if (activeTab === "segmentation") {
+      if (activeTab === "basic") {
+        // Handle basic generation
+        const styleWeight = styleSliderValToWeight(styleSliderVal);
+        const tvWeight = tvSliderValToWeight(currentTvVal);
+        
+        const genData = {
+          userId: auth.currentUser.uid,
+          username,
+          outputImage: `${process.env.REACT_APP_BACKEND_URL}/image/generated/loading.gif`,
+          contentImage: `${process.env.REACT_APP_BACKEND_URL}/image/content/${image_name}`,
+          style: styles[selectedStyleIdx],
+          initMethod: currentInitMethod,
+          styleSliderVal: styleSliderVal,
+          styleWeight,
+          tvSliderVal: currentTvVal,
+          tvWeight,
+          iterations: currentIterations,
+          generationType: activeTab,
+          timestamp: serverTimestamp(),
+        };
+
+        const genRef = await addDoc(collection(db, "gens"), genData);
+
+        const styleImgName = styles[selectedStyleIdx].image.replace(
+          `${process.env.REACT_APP_BACKEND_URL}/image/style/`,
+          ""
+        );
+
+        const params = {
+          doc_id: genRef.id,
+          content_img: image_name,
+          style_img: styleImgName,
+          init_method: currentInitMethod,
+          style_weight: styleWeight,
+          tv_weight: tvWeight,
+          iterations: currentIterations,
+        };
+
+        const backendPromise = fetch(
+          `${process.env.REACT_APP_BACKEND_URL}/generate?` +
+            new URLSearchParams(params).toString(),
+          { method: "POST" }
+        )
+          .then(res => {
+            if (!res.ok) throw new Error(res.statusText);
+            return res;
+          })
+          .catch(err => {
+            console.error("Generate error:", err);
+          });
+
+        await Promise.race([
+          backendPromise,
+          new Promise(resolve => setTimeout(resolve, 2000))
+        ]);
+        setOpen(false);
+        clearContent();
+        await backendPromise;
+      } else if (activeTab === "segmentation") {
         // Handle segmentation generation
         const personStyleWeight = segPersonStyleEnabled ? styleSliderValToWeight(segPersonStyleSliderVal) : 0;
         const backgroundStyleWeight = segBackgroundStyleEnabled ? styleSliderValToWeight(segBackgroundStyleSliderVal) : 0;
