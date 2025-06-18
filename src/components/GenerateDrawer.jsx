@@ -864,7 +864,7 @@ export function GenerateDrawer() {
                         onChange={(e) => setMixedInitMethod(e.target.value)}
                       >
                         <option value="content">Content-based initialization</option>
-                        <option value="style">Style-based initialization</option>
+                        <option value="random">Random initialization</option>
                       </select>
                     </div>
                   </div>
