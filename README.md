@@ -611,7 +611,7 @@ Contributions are welcome! This project was developed as part of academic resear
 
 ## 👨‍💻 Author
 
-**[Your Name]**
+**Babos Dávid**
 - GitHub: [@FokaKefir](https://github.com/FokaKefir)
 - Email: babosdavid8@gmail.com
 - LinkedIn: [Babos Dávid](https://www.linkedin.com/in/babos-d%C3%A1vid-ba9bb5227/)
